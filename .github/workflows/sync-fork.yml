@@ -1,0 +1,79 @@
+name: Sync fork with upstream
+
+on:
+  schedule:
+    - cron: "17 0 * * *"
+  workflow_dispatch:
+    inputs:
+      strategy:
+        description: "同步策略：merge 保留本地提交，reset 完全对齐上游"
+        type: choice
+        options:
+          - merge
+          - reset
+        default: merge
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-fork
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 解析上游仓库与分支名
+        id: meta
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          UPSTREAM_REPO=$(gh api "repos/${GITHUB_REPOSITORY}" --jq '.parent.full_name')
+          if [ -z "$UPSTREAM_REPO" ] || [ "$UPSTREAM_REPO" = "null" ]; then
+            echo "当前仓库不是 fork，退出"
+            exit 0
+          fi
+          UPSTREAM_BRANCH=$(curl -fsSL "https://api.github.com/repos/${UPSTREAM_REPO}" | jq -r '.default_branch')
+          LOCAL_BRANCH="${{ github.event.repository.default_branch }}"
+          echo "upstream_repo=${UPSTREAM_REPO}" >> "$GITHUB_OUTPUT"
+          echo "upstream_branch=${UPSTREAM_BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "local_branch=${LOCAL_BRANCH}" >> "$GITHUB_OUTPUT"
+
+      - name: 检出本地默认分支
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.local_branch }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: 拉取上游提交与标签
+        run: |
+          set -euo pipefail
+          git remote add upstream "https://github.com/${{ steps.meta.outputs.upstream_repo }}.git"
+          git fetch upstream --prune --tags --force
+
+      - name: 按策略执行同步
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          STRATEGY="${{ github.event.inputs.strategy || 'merge' }}"
+          UP="upstream/${{ steps.meta.outputs.upstream_branch }}"
+          BRANCH="${{ steps.meta.outputs.local_branch }}"
+
+          echo "策略=${STRATEGY}，上游引用=${UP}，本地分支=${BRANCH}"
+
+          if [ "$STRATEGY" = "reset" ]; then
+            git reset --hard "$UP"
+            git push origin "HEAD:${BRANCH}" --force-with-lease
+          else
+            if git merge-base --is-ancestor "$UP" HEAD; then
+              echo "本地已包含上游全部提交，无需同步"
+              exit 0
+            fi
+            git merge --no-edit "$UP"
+            git push origin "HEAD:${BRANCH}"
+          fi
