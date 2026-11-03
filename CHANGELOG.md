@@ -3,6 +3,54 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.3] - 2026-11-02
+
+### Changed
+
+- The Necko helpers start from bytecode. The Python bundled for them on Windows and Linux held its standard
+  library as sources, and pip compiles the bundled packages for whichever Python installs the wheel (rarely the
+  helpers' 3.14), so each helper compiled about 350 modules when it started, and so did each DNS resolver child a
+  helper starts for a new host. The runtime now carries bytecode of the bundled Python (unchecked-hash `.pyc`).
+  On Windows, with the wheel installed by Python 3.12: a helper starts in 0.55 CPU-seconds instead of 2.4 and
+  uses about 3 MiB less (5 MiB after its first HTTPS request); opening 32 Contexts takes 40 CPU-seconds instead
+  of 218; the first request to a new host is about 0.45 s faster, and a page that needs many helpers loads
+  sooner (github.com: 9.4 s instead of 16.8). `ci/helper_check.py` fails when a helper compiles a module.
+- The bundled helper Python leaves out modules the helper cannot use: on Windows Tk, SQLite and winsound
+  (5.4 MB); on Linux the static libpython and its build files (73 MB), the build Python's pip, CPython's test
+  modules, and the Tk, curses, readline, dbm and SQLite extension modules, with the libraries they brought into
+  the bundle (libtcl, libtk, libX11).
+
+### Fixed
+
+- Geometry reads (`offsetHeight`, `getBoundingClientRect()`, `scrollHeight`, ...) after a style change no
+  longer restyle elements the change cannot reach, and lay out faster (#13, reported by @jp19980). A child keeps
+  its computed style when its parent's change leaves what the parent passes it unchanged (inherited and custom
+  properties, display, font sizes), as Firefox does, unless the child `inherit`s a property that does not
+  inherit. Layout shares computed styles instead of copying them, finds properties in a sorted table, remembers
+  resolved lengths, and keeps a text's measurement while neither the text nor its font changed. With 1,500 divs,
+  reading an input's `offsetHeight` after changing a later sibling's padding took 415 ms and now takes 57 ms on
+  the Windows machine we measured (500 divs: 132 to 17.6 ms; 100: 28 to 4.7 ms).
+- Geometry read after a mutation missed two changes until the page was laid out from scratch: a custom property
+  changed on an element did not reach children that read it through `var()`, and a line-height changed from a
+  length to a number (`20px` to `1.25`) did not reach children with another font size. `ci/layout_check.py`
+  compares geometry read after a mutation with a fresh layout of the mutated page.
+
+## [0.3.2] - 2026-11-02
+
+### Fixed
+
+- `Engine`: sessions no longer wait for each other's memory allocations. Each session thread allocates from a
+  jemalloc arena of its own, as Firefox's main thread does, and gives its free pages back when it ends. 32
+  sessions loading a page at once took 8.0 s and 156 CPU-seconds, now 2.2 s and 17 (32 Contexts: 1.8 s). Linux
+  builds use glibc's allocator, which already gives each thread an arena.
+
+### Changed
+
+- Windows: `js.exe`, its Necko helpers and worker processes start without a console (`DETACHED_PROCESS`), so
+  none of them brings a `conhost.exe` of its own (about 6 MiB each). A Context now runs in 3 processes instead of
+  6 and uses about 17 MiB less; an engine session uses one process and about 6 MiB less.
+  `ci/engine_check.py` checks it.
+
 ## [0.3.1] - 2026-11-01
 
 ### Added

@@ -68,7 +68,7 @@ python -m pip install --upgrade ruyijs
 To verify the installation:
 ```python
 import ruyijs
-print(ruyijs.__version__)   # 0.3.1
+print(ruyijs.__version__)   # 0.3.3
 ```
 
 ### Build from source
@@ -189,7 +189,7 @@ with Context() as context:
 
 ### Many independent sessions in one process
 
-A `Context` starts its own process. An `Engine` runs many Contexts as sessions of one process instead, each on its own thread with its own heap, page, clock, cookies, storage, proxy and TLS profile, in parallel. `prewarm` and `network=` trim the Necko helper processes, which are most of a Context's memory: four sessions measured 219 MiB in 5 processes against 385 MiB in 12 for four Contexts, and 151 MiB in 3 when they share one network ([docs/engine.md](docs/engine.md)).
+A `Context` starts its own process. An `Engine` runs many Contexts as sessions of one process instead, each on its own thread with its own heap, page, clock, cookies, storage, proxy and TLS profile, in parallel. `prewarm` and `network=` trim the Necko helper processes, which are most of a Context's memory: four sessions measured 221 MiB in 5 processes against 378 MiB in 12 for four Contexts, and 151 MiB in 3 when they share one network ([docs/engine.md](docs/engine.md)).
 
 ```python
 from ruyijs import Context, Engine, use_engine
