@@ -3,6 +3,52 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.6] - 2026-11-07
+
+### Fixed
+
+- Aborting a fetch that is still in flight rejects it with `AbortError` instead of crashing `js.exe`
+  (0xC0000005 on Windows, "pipe closed during a frame" on Linux). Pages that abort pending fetches, such as
+  Twitch's login page with its Kasada SDK, now load (#30).
+- A pending Web Animations play/pause task and the finish timer run; they never matched their own callback
+  before and so never fired.
+
+## [0.3.5] - 2026-11-06
+
+### Changed
+
+- Layout reads a node without the sibling scan or the name strings it does not use (#22), resolves `element.style`
+  without a full node snapshot and finds a reflected facade through an index instead of a list walk (#27), and
+  reads its known box properties from their slots rather than by name (#29). Geometry is unchanged.
+- `getComputedStyle` is cached while the document revision and cascade stamp are unchanged, so repeated reads of
+  the same element do not recompute the cascade (#23).
+- `querySelectorAll` defers each match's wrapper until it is indexed, and `getElementById` answers from an element
+  id index instead of a tree scan (#24). A custom-element upgrade reads only the tag and connection (#25).
+- A large `innerHTML` replacement purges the detached tree's dirty pages back to the allocator (#26).
+
+### Fixed
+
+- `getElementById` returns null for an element that was removed from the document but is still referenced by
+  script, matching Firefox; the id index no longer reports a detached node (acceptance fix for #24).
+
+## [0.3.4] - 2026-11-05
+
+### Changed
+
+- DOM calls find a node's wrapper from the object's own slot instead of walking every live wrapper (#16), and
+  event targets are found through an index instead of a scan; appending a node that is not in a tree no longer
+  copies its new parent's child list (#17). Building 8,000 elements with a listener each: 2.3 s instead of 3.4.
+- Layout resolves `auto`, `none` and `0px` without parsing them (#18) and finds the properties it reads on every
+  box by id, without a second edge pass per child (#19). Geometry is unchanged.
+- On Linux and macOS a plain Context starts its Necko helpers on the first request instead of prewarming two,
+  and drops them before the shell exits (#20, #21). Windows and Engine sessions keep their prewarm setting.
+- `docs/linux-baseline.md` and `ci/linux_baseline.py`: Ubuntu 24.04 build notes and a speed baseline (#15).
+
+### Fixed
+
+- macOS: the xpcshell fallback returns the response headers, and finds a donor build in more checkout layouts
+  (#14). Redirects still reach the page one hop at a time on every route.
+
 ## [0.3.3] - 2026-11-02
 
 ### Changed

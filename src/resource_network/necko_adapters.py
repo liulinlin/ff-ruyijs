@@ -10,7 +10,8 @@ cleartext HTTP uses an absolute-form request on the recovered exchange.
 Any other non-HTTPS URL keeps the donor xpcshell. A request the library
 cannot represent falls back for that request only. Certificate
 verification failures stay on the library path. This process does not
-store cookies, does not follow redirects, and does not turn the socket
+store cookies, does not follow redirects (a 3xx is the response on both
+routes; the page side follows each hop), and does not turn the socket
 process on.
 """
 

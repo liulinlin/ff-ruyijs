@@ -131,6 +131,20 @@ bool Same(NodeKey a, NodeKey b) { return a.document == b.document && a.node == b
 Wrapper* State::Find(JSObject* object) const {
   if (!object) return nullptr;
   object = js::CheckedUnwrapStatic(object);
+  if (!object) return nullptr;
+  // Slot 0 of a live node is that node's wrapper. Walking `wrappers` is
+  // linear in the number of live nodes, and every DOM call does this lookup.
+  // The slot is published before the record is linked, and a collected record
+  // stays reachable from the list until reclaim, so the slot is trusted only
+  // when it names a listed, live record of this realm whose object is still
+  // this one (a compacting trace repoints `wrapper->object`). Anything else
+  // keeps the list walk, which is what Find returned before.
+  if (JS::GetClass(object) == &kNodeClass) {
+    auto* wrapper = static_cast<Wrapper*>(JS::GetReservedSlot(object, 0).toPrivate());
+    if (wrapper && wrapper->listed && !wrapper->dead && wrapper->owner == this &&
+        wrapper->object == object)
+      return wrapper;
+  }
   for (auto* value = wrappers.get(); value; value = value->next.get())
     if (!value->dead && value->object == object) return value;
   return nullptr;
@@ -143,23 +157,32 @@ Wrapper* State::Find(NodeKey key) const {
     return nullptr;
   return found->second;
 }
-ReflectedLink* State::Reflected(NodeKey key) {
+void State::DropReflected(ReflectedLink* link) {
+  if (!link) return;
+  reflectedIndex.erase(link->key);
   auto* slot = &reflected;
   while (*slot) {
-    auto* value = slot->get();
-    if (!value->style && !value->dataset && !value->animatedClass) {
+    if (slot->get() == link) {
       auto expired = std::move(*slot);
       *slot = std::move(expired->next);
-    } else {
-      if (Same(value->key, key)) return value;
-      slot = &value->next;
+      return;
     }
+    slot = &(*slot)->next;
+  }
+}
+ReflectedLink* State::Reflected(NodeKey key) {
+  auto found = reflectedIndex.find(key);
+  if (found != reflectedIndex.end()) {
+    ReflectedLink* value = found->second;
+    if (value->style || value->dataset || value->animatedClass) return value;
+    DropReflected(value);
   }
   std::unique_ptr<ReflectedLink> entry(new (std::nothrow) ReflectedLink(cx, key));
   if (!entry) { JS_ReportOutOfMemory(cx); return nullptr; }
   ReflectedLink* raw = entry.get();
   entry->next = std::move(reflected);
   reflected = std::move(entry);
+  reflectedIndex.emplace(key, raw);
   return raw;
 }
 Interface* State::Find(const char* name) const {
